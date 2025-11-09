@@ -4,11 +4,15 @@ import EnhancedText from "./components/EnhancedText";
 function App() {
   return (
     <div className="app-container">
-      <h1>Patient Case Description</h1>
+      <h2>Text Enhancement</h2>
 
       <EnhancedText
-        label="Enter patient case description:"
+        label="Data"
         placeholder="Type the patient's case description here..."
+      />
+      <EnhancedText
+        label="Assessment"
+        placeholder="Type your assessment here..."
       />
     </div>
   );

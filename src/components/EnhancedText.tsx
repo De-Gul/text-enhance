@@ -1,113 +1,108 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import SuggestionDisplay from "./SuggestionDisplay";
+import { Chip, styled, TextField } from "@mui/material";
+import StyledButton from "./StyledButton";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 
 interface EnhancedTextProps {
   label: string;
   placeholder: string;
 }
 
+const StyledButtonContainer = styled("div")({
+  position: "relative",
+  minHeight: 40,
+});
+
 function EnhancedText({ label, placeholder }: EnhancedTextProps) {
   const [inputText, setInputText] = useState("");
+  const [showEnhanceButton, setShowEnhanceButton] = useState(false);
   const [textToEnhance, setTextToEnhance] = useState("");
   const [originalText, setOriginalText] = useState("");
-
-  const handleUseText = (text: string) => {
-    setInputText(text);
-    setTextToEnhance("");
-  };
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleEnhance = () => {
+    setShowEnhanceButton(false);
     setOriginalText(inputText);
-    setTextToEnhance(inputText || "");
+    setTextToEnhance(inputText);
+  };
+
+  const handleClose = () => {
+    setTextToEnhance("");
+    // delay to allow the input to blur
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 200);
   };
 
   const handleDiscard = () => {
     setInputText(originalText);
-    setTextToEnhance("");
+    handleClose();
   };
+
+  const handleUseText = (text: string) => {
+    setInputText(text);
+    handleClose();
+  };
+
+  const handleShowEnhanceButton = () => {
+    setShowEnhanceButton(true);
+  };
+
+  const handleHideEnhanceButton = () => {
+    // delay to allow the input to blur
+    setTimeout(() => {
+      setShowEnhanceButton(false);
+    }, 100);
+  };
+
   return (
-    <div>
+    <div className="case-form">
       <label htmlFor="case-description">{label}</label>
-      <textarea
+      <TextField
         id="case-description"
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
         placeholder={placeholder}
-        rows={8}
-        className="case-textarea"
-        style={{
-          flex: 1,
-        }}
+        multiline
+        rows={5}
+        fullWidth
+        variant="outlined"
+        disabled={textToEnhance !== ""}
+        onFocus={handleShowEnhanceButton}
+        onBlur={handleHideEnhanceButton}
+        inputRef={inputRef}
       />
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          marginTop: "0.75em",
-        }}
-      >
-        <button
-          type="button"
-          className="btn btn-primary"
+      <StyledButtonContainer>
+        <StyledButton
+          variant="outlined"
+          color="primary"
           onClick={handleEnhance}
           disabled={!inputText}
+          startIcon={<AutoAwesomeIcon />}
           style={{
-            flex: 0,
-            opacity: !inputText ? 0.5 : 1,
-            cursor: !inputText ? "not-allowed" : "pointer",
-            marginLeft: "auto",
+            position: "absolute",
+            top: 0,
+            right: 0,
+            opacity: showEnhanceButton ? 1 : 0,
+            transition: "opacity 0.3s ease-in-out",
+            zIndex: 1,
           }}
         >
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5em",
-            }}
-          >
-            {/* Simple AI icon as SVG */}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-label="AI"
-              style={{ verticalAlign: "middle" }}
-            >
-              <circle
-                cx="10"
-                cy="10"
-                r="8"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                fill="#fff"
-              />
-              <text
-                x="10"
-                y="14"
-                textAnchor="middle"
-                fontSize="8"
-                fontWeight="bold"
-                fill="currentColor"
-                fontFamily="Arial"
-              >
-                AI
-              </text>
-            </svg>
-            Inhance
-          </span>
-        </button>
-      </div>
-
-      {textToEnhance && (
-        <SuggestionDisplay
-          inputText={textToEnhance}
-          onUseText={handleUseText}
-          onDiscard={handleDiscard}
-        />
-      )}
+          Enhance
+          <Chip label="Beta" color="primary" size="small" disabled={!inputText} />
+        </StyledButton>
+        <div style={{ position: "relative", zIndex: 10 }}>
+        {textToEnhance && (
+          <SuggestionDisplay
+            inputText={textToEnhance}
+            onUseText={handleUseText}
+            onDiscard={handleDiscard}
+          />
+        )}
+        </div>
+      </StyledButtonContainer>
     </div>
   );
 }

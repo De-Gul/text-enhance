@@ -1,16 +1,14 @@
-import { useState, useEffect } from "react";
-import enhanceData from "../data/enhance_sentences.json";
-import "../App.css";
-
-interface Session {
-  input: string;
-  outputs: string[];
-}
-
-interface Suggestion {
-  text: string;
-  originalInput: string;
-}
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useDataContext } from "../api/dataContext";
+import { CircularProgress, styled } from "@mui/material";
+import type { Suggestion as SuggestionType } from "../api/dataHandler";
+import StyledButton from "./StyledButton";
+import StyledIconButton from "./StyledArrowButton";
+import DeleteOutline from "@mui/icons-material/DeleteOutline";
+import ReplayIcon from "@mui/icons-material/Replay";
+import CheckIcon from "@mui/icons-material/Check";
+import ArrowBackIosIcon from "@mui/icons-material/ArrowBackIos";
+import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
 
 interface SuggestionDisplayProps {
   inputText: string;
@@ -18,285 +16,222 @@ interface SuggestionDisplayProps {
   onDiscard: () => void;
 }
 
+const StyledContainer = styled("div")({
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  boxShadow: "0 0 10px 0 rgba(0, 0, 0, 0.1)",
+  borderRadius: "8px",
+  padding: "1rem",
+  backgroundColor: "white",
+  marginBottom: "1.5rem",
+});
+
+const StyledTextContainer = styled("div")({
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.5rem",
+});
+
+const StyledButtonsContainer = styled("div")({
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  gap: "0.5rem",
+});
+
+const StyledErrorMessage = styled("div")({
+  color: "red",
+  flex: 1,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "0.5rem",
+  lineHeight: 1.2,
+  fontSize: "0.9rem",
+});
+
+const StyledLoadingMessage = styled("div")({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "start",
+  gap: "0.5rem",
+  fontSize: "0.9rem",
+  color: "#666",
+  flex: 1,
+});
+
+const SuggestionNavigation = styled("div")({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "end",
+  flex: 0,
+  gap: "0.5rem",
+  fontSize: "0.8rem",
+});
+
+const MAX_TRIES = 3;
+
 function SuggestionDisplay({
   inputText,
   onUseText,
   onDiscard,
 }: SuggestionDisplayProps) {
-  const sessions = enhanceData.sessions;
-  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
-  const [usedIndices, setUsedIndices] = useState<number[]>([]);
-  const [lastMatchKey, setLastMatchKey] = useState("");
-  const [tryAgainCount, setTryAgainCount] = useState(0);
-  const [savedSuggestions, setSavedSuggestions] = useState<Suggestion[]>([]);
-  const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0);
+  const [suggestion, setSuggestion] = useState<SuggestionType | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [tryAgainCount, setTryAgainCount] = useState(1);
+  const [savedSuggestions, setSavedSuggestions] = useState<SuggestionType[]>(
+    []
+  );
+  const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const normalize = (value: string) =>
-    value
-      .toLowerCase()
-      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
+  const hasFetchedRef = useRef(false);
+  const isCancelledRef = useRef(false);
 
-  useEffect(() => {
-    setIsLoading(true);
+  const { fetchSuggestion } = useDataContext();
+
+  const resetSuggestions = () => {
+    setSuggestion(null);
+    setIsLoading(false);
+    setTryAgainCount(1);
+    setCurrentSuggestionIndex(0);
+    setSavedSuggestions([]);
     setError(null);
-    let cancelled = false;
-
-    const simulateFetchSuggestion = async () => {
-      try {
-        const key = normalize(inputText);
-
-        if (!key) {
-          if (cancelled) return;
-          setSuggestion(null);
-          setUsedIndices([]);
-          setLastMatchKey("");
-          setTryAgainCount(0);
-          setSavedSuggestions([]);
-          setCurrentSuggestionIndex(0);
-          setIsLoading(false);
-          return;
-        }
-
-        const matchedSession = sessions.find(
-          (session: Session) => normalize(session.input) === key
-        );
-
-        if (!matchedSession) {
-          if (cancelled) return;
-          setSuggestion(null);
-          setUsedIndices([]);
-          setLastMatchKey("");
-          setTryAgainCount(0);
-          setSavedSuggestions([]);
-          setCurrentSuggestionIndex(0);
-          return;
-        }
-
-        if (lastMatchKey !== key) {
-          if (cancelled) return;
-          setUsedIndices([]);
-          setLastMatchKey(key);
-          setSuggestion(null);
-          setTryAgainCount(0);
-          setSavedSuggestions([]);
-          setCurrentSuggestionIndex(0);
-        }
-
-        if (!suggestion && savedSuggestions.length === 0) {
-          const available: number[] = matchedSession.outputs
-            .map((_, idx) => idx)
-            .filter((idx) => !usedIndices.includes(idx));
-
-          if (available.length === 0) {
-            if (cancelled) return;
-            setSuggestion(null);
-            return;
-          }
-
-          const delayMs = 300 + Math.floor(Math.random() * 900);
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-          if (cancelled) return;
-
-          const rand = Math.floor(Math.random() * available.length);
-          const choiceIndex = available[rand];
-          const newSuggestion: Suggestion = {
-            text: matchedSession.outputs[choiceIndex],
-            originalInput: matchedSession.input,
-          };
-          setSuggestion(newSuggestion);
-          setSavedSuggestions([newSuggestion]);
-          setCurrentSuggestionIndex(0);
-          setUsedIndices((prev) => [...prev, choiceIndex]);
-          setTryAgainCount(0);
-        }
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "An unknown error occurred"
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    simulateFetchSuggestion();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    inputText,
-    lastMatchKey,
-    suggestion,
-    usedIndices,
-    savedSuggestions.length,
-  ]);
+  };
 
   const handleUseText = () => {
-    if (suggestion) {
-      onUseText(suggestion.text);
-      setSuggestion(null);
-      setTryAgainCount(0);
-      setSavedSuggestions([]);
-      setCurrentSuggestionIndex(0);
-    }
+    onUseText(suggestion?.text || "");
+    //resetSuggestion();
   };
 
   const handleDiscard = () => {
-    setSuggestion(null);
-    setTryAgainCount(0);
-    setSavedSuggestions([]);
-    setCurrentSuggestionIndex(0);
     onDiscard();
+    resetSuggestions();
   };
 
+  const handleFetchSuggestion = useCallback(async () => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      const usedIndices = savedSuggestions.map((s) => s.index);
+      const newSuggestion = await fetchSuggestion(inputText, usedIndices);
+      if (isCancelledRef.current) return;
+      if (newSuggestion) {
+        setSuggestion(newSuggestion);
+        setSavedSuggestions((prev) => {
+          const newSavedSuggestions = [...prev, newSuggestion];
+          setCurrentSuggestionIndex(newSavedSuggestions.length - 1);
+          return newSavedSuggestions;
+        });
+      }
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "An unknown error occurred"
+      );
+    } finally {
+      if (!isCancelledRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [fetchSuggestion, inputText, savedSuggestions]);
+
   const handleTryAgain = () => {
-    if (suggestion && tryAgainCount < 3) {
-      const key = normalize(inputText);
-      const matchedSession = sessions.find(
-        (session: Session) => normalize(session.input) === key
-      );
-      if (!matchedSession) return;
-
-      // Save current suggestion if not already saved
-      const currentSuggestionExists = savedSuggestions.some(
-        (s) => s.text === suggestion.text
-      );
-      if (!currentSuggestionExists) {
-        setSavedSuggestions((prev) => [...prev, suggestion]);
-      }
-
-      const available: number[] = matchedSession.outputs
-        .map((_, idx) => idx)
-        .filter((idx) => !usedIndices.includes(idx));
-
-      if (available.length === 0) {
-        setSuggestion(null);
-        return;
-      }
-
-      const rand = Math.floor(Math.random() * available.length);
-      const choiceIndex = available[rand];
-      const newSuggestion: Suggestion = {
-        text: matchedSession.outputs[choiceIndex],
-        originalInput: matchedSession.input,
-      };
-
-      // Update saved suggestions array
-      const updatedSaved = currentSuggestionExists
-        ? [...savedSuggestions, newSuggestion]
-        : [...savedSuggestions, suggestion, newSuggestion];
-
-      setSavedSuggestions(updatedSaved);
-      setCurrentSuggestionIndex(updatedSaved.length - 1);
-      setSuggestion(newSuggestion);
-      setUsedIndices((prev) => [...prev, choiceIndex]);
-      setTryAgainCount((prev) => prev + 1);
+    if (tryAgainCount < MAX_TRIES || error) {
+      handleFetchSuggestion().then(() => {
+        setTryAgainCount(tryAgainCount + 1);
+      });
     }
   };
 
   const handlePreviousSuggestion = () => {
     if (suggestion && currentSuggestionIndex > 0) {
-      // Ensure current suggestion is saved before navigating
-      const currentExists = savedSuggestions.some(
-        (s) => s.text === suggestion.text
-      );
-      if (
-        !currentExists &&
-        currentSuggestionIndex === savedSuggestions.length
-      ) {
-        // Current suggestion is not saved, save it first
-        setSavedSuggestions((prev) => [...prev, suggestion]);
-      }
-
-      const newIndex = currentSuggestionIndex - 1;
-      setCurrentSuggestionIndex(newIndex);
-      setSuggestion(savedSuggestions[newIndex]);
+      setCurrentSuggestionIndex(currentSuggestionIndex - 1);
+      setSuggestion(savedSuggestions[currentSuggestionIndex - 1]);
     }
   };
 
   const handleNextSuggestion = () => {
-    if (suggestion) {
-      // Ensure current suggestion is saved before navigating
-      const currentExists = savedSuggestions.some(
-        (s) => s.text === suggestion.text
-      );
-      if (!currentExists) {
-        // Current suggestion is not saved, save it and update index
-        const updated = [...savedSuggestions, suggestion];
-        setSavedSuggestions(updated);
-        setCurrentSuggestionIndex(updated.length - 1);
-      } else if (currentSuggestionIndex < savedSuggestions.length - 1) {
-        const newIndex = currentSuggestionIndex + 1;
-        setCurrentSuggestionIndex(newIndex);
-        setSuggestion(savedSuggestions[newIndex]);
-      }
+    if (suggestion && currentSuggestionIndex < savedSuggestions.length - 1) {
+      setCurrentSuggestionIndex(currentSuggestionIndex + 1);
+      setSuggestion(savedSuggestions[currentSuggestionIndex + 1]);
     }
   };
 
-  if (!suggestion) {
-    return null;
-  }
+  useEffect(() => {
+    isCancelledRef.current = false;
+    if (!hasFetchedRef.current) {
+      handleFetchSuggestion();
+      hasFetchedRef.current = true; // prevent multiple fetches on mount
+    }
+
+    return () => {
+      isCancelledRef.current = true;
+    };
+  }, []);
 
   return (
-    <div className="suggestion-container">
-      <div className="suggestion-header">
-        <strong>Suggested Enhancement:</strong>
-      </div>
-      <div className="suggestion-text">{suggestion.text}</div>
-      <div className="suggestion-buttons">
-        <button
-          type="button"
-          onClick={handleUseText}
-          className="btn btn-primary"
-        >
-          Use Text
-        </button>
-        <button
-          type="button"
+    <StyledContainer>
+      {suggestion && (
+        <StyledTextContainer>{suggestion.text}</StyledTextContainer>
+      )}
+      <StyledButtonsContainer>
+        {isLoading && (
+          <StyledLoadingMessage>
+            <CircularProgress size={20} /> Generating suggestions...
+          </StyledLoadingMessage>
+        )}
+        {error && <StyledErrorMessage>{error}</StyledErrorMessage>}
+        <StyledButton
           onClick={handleDiscard}
-          className="btn btn-secondary"
+          startIcon={<DeleteOutline />}
+          variant="outlined"
         >
           Discard
-        </button>
-        <button
-          type="button"
+        </StyledButton>
+        <StyledButton
           onClick={handleTryAgain}
-          className="btn btn-secondary"
-          disabled={tryAgainCount >= 3 || isLoading}
+          startIcon={<ReplayIcon />}
+          disabled={(!error && tryAgainCount >= 3) || isLoading}
+          variant="outlined"
         >
           Try Again
-        </button>
-      </div>
-      {error && <div className="error-message">{error}</div>}
-      {isLoading && <div className="loading-message">Loading...</div>}
+        </StyledButton>
+        <StyledButton
+          onClick={handleUseText}
+          startIcon={<CheckIcon />}
+          variant="contained"
+          color="primary"
+          disabled={!suggestion}
+        >
+          Use Text
+        </StyledButton>
+      </StyledButtonsContainer>
+
       {savedSuggestions.length > 1 && (
-        <div className="suggestion-navigation">
-          <button
+        <SuggestionNavigation>
+          <StyledIconButton
             type="button"
             onClick={handlePreviousSuggestion}
             className="btn-nav"
             disabled={currentSuggestionIndex === 0}
           >
-            ← Previous
-          </button>
+            <ArrowBackIosIcon style={{ marginLeft: "0.3em" }} />
+          </StyledIconButton>
           <span className="suggestion-counter">
-            {currentSuggestionIndex + 1} of {savedSuggestions.length}
+            {currentSuggestionIndex + 1}/{savedSuggestions.length}
           </span>
-          <button
+          <StyledIconButton
             type="button"
             onClick={handleNextSuggestion}
             className="btn-nav"
             disabled={currentSuggestionIndex === savedSuggestions.length - 1}
           >
-            Next →
-          </button>
-        </div>
+            <ArrowForwardIosIcon style={{ marginLeft: "0.2em" }} />
+          </StyledIconButton>
+        </SuggestionNavigation>
       )}
-    </div>
+    </StyledContainer>
   );
 }
 
