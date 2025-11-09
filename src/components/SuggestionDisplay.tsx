@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useDataContext } from "../api/dataContext";
+import { useDataContext } from "../api/DataContext";
 import { CircularProgress, styled } from "@mui/material";
 import type { Suggestion as SuggestionType } from "../api/dataHandler";
 import StyledButton from "./StyledButton";

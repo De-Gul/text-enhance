@@ -2,6 +2,10 @@
   box-sizing: border-box; 
 }
 
+:root {
+  --variant-outlinedColor: #666;
+}
+
 body {
   margin: 0;
   padding: 0;
